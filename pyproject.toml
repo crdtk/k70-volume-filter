@@ -1,0 +1,15 @@
+[project]
+name = "k70-volume-filter"
+version = "0.1.0"
+description = "Input filter for Corsair K70 TKL Champion volume wheel firmware bug on Linux"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = ["evdev>=1.4.0"]
+
+[project.scripts]
+k70-volume-filter = "k70_volume_filter.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

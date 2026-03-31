@@ -1,0 +1,4 @@
+# Allow k70-volume-filter to access the Corsair K70 TKL Champion input device
+SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1bb9", MODE="0660", TAG+="uaccess"
+# Allow uinput access for creating virtual devices
+KERNEL=="uinput", MODE="0660", TAG+="uaccess"
