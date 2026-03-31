@@ -13,10 +13,10 @@ This tool grabs the raw input device, collects events into time-windowed bursts,
 ## Install
 
 ```bash
-uv tool install k70-volume-filter
+uv tool install git+https://github.com/crdtk/k70-volume-filter.git
 ```
 
-Or from source:
+From source:
 
 ```bash
 git clone https://github.com/crdtk/k70-volume-filter.git
