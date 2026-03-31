@@ -9,7 +9,11 @@ a virtual uinput device. All non-volume events pass through untouched.
 """
 
 import argparse
+import os
+import shutil
+import subprocess
 import sys
+import textwrap
 import threading
 import evdev
 from evdev import UInput, ecodes
@@ -128,41 +132,141 @@ def run_filter(burst_window, divisor, max_ticks, device_name, verbose):
         ui.close()
 
 
+SERVICE_NAME = "k70-volume-filter"
+SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}.service"
+UDEV_RULES_PATH = "/etc/udev/rules.d/99-k70-volume-filter.rules"
+
+
+def _find_executable():
+    path = shutil.which("k70-volume-filter")
+    if path:
+        return path
+    return os.path.abspath(sys.argv[0])
+
+
+def _generate_service(exe_path):
+    return textwrap.dedent(f"""\
+        [Unit]
+        Description=Corsair K70 TKL Champion Volume Wheel Filter
+        After=multi-user.target
+
+        [Service]
+        Type=simple
+        ExecStart={exe_path}
+        Restart=on-failure
+        RestartSec=5
+
+        [Install]
+        WantedBy=multi-user.target
+    """)
+
+
+UDEV_RULES = textwrap.dedent("""\
+    # Allow k70-volume-filter to access the Corsair K70 TKL Champion input device
+    SUBSYSTEM=="input", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1bb9", MODE="0660", TAG+="uaccess"
+    # Allow uinput access for creating virtual devices
+    KERNEL=="uinput", MODE="0660", TAG+="uaccess"
+""")
+
+
+def install_service():
+    if os.geteuid() != 0:
+        sys.exit("Error: install must be run as root (sudo k70-volume-filter install)")
+
+    exe = _find_executable()
+    print(f"Executable: {exe}")
+
+    # Write service file
+    with open(SERVICE_PATH, "w") as f:
+        f.write(_generate_service(exe))
+    print(f"Created {SERVICE_PATH}")
+
+    # Write udev rules
+    with open(UDEV_RULES_PATH, "w") as f:
+        f.write(UDEV_RULES)
+    print(f"Created {UDEV_RULES_PATH}")
+
+    # Reload and enable
+    subprocess.run(["udevadm", "control", "--reload-rules"], check=True)
+    subprocess.run(["udevadm", "trigger"], check=True)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "enable", "--now", SERVICE_NAME], check=True)
+    print(f"\nService '{SERVICE_NAME}' installed and started.")
+    print(f"Check status: systemctl status {SERVICE_NAME}")
+
+
+def uninstall_service():
+    if os.geteuid() != 0:
+        sys.exit("Error: uninstall must be run as root (sudo k70-volume-filter uninstall)")
+
+    subprocess.run(["systemctl", "disable", "--now", SERVICE_NAME], check=False)
+
+    for path in (SERVICE_PATH, UDEV_RULES_PATH):
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"Removed {path}")
+
+    subprocess.run(["udevadm", "control", "--reload-rules"], check=True)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    print(f"\nService '{SERVICE_NAME}' uninstalled.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Filter for Corsair K70 TKL Champion volume wheel firmware bug"
     )
-    parser.add_argument(
+    sub = parser.add_subparsers(dest="command")
+
+    # install / uninstall subcommands
+    sub.add_parser("install", help="Install systemd service and udev rules")
+    sub.add_parser("uninstall", help="Remove systemd service and udev rules")
+
+    # run subcommand (default)
+    run_parser = sub.add_parser("run", help="Run the filter (default)")
+    run_parser.add_argument(
         "--burst-window",
         type=float,
         default=DEFAULT_BURST_WINDOW,
         help=f"Burst collection window in seconds (default: {DEFAULT_BURST_WINDOW})",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--divisor",
         type=int,
         default=DEFAULT_DIVISOR,
         help=f"Divide total raw events by this for tick count (default: {DEFAULT_DIVISOR})",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--max-ticks",
         type=int,
         default=DEFAULT_MAX_TICKS,
         help=f"Maximum ticks per burst (default: {DEFAULT_MAX_TICKS})",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--device-name",
         default=DEVICE_NAME,
         help="Input device name to filter",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Print event details",
     )
+
+    # Also add run args to main parser for when no subcommand is given
+    parser.add_argument("--burst-window", type=float, default=DEFAULT_BURST_WINDOW)
+    parser.add_argument("--divisor", type=int, default=DEFAULT_DIVISOR)
+    parser.add_argument("--max-ticks", type=int, default=DEFAULT_MAX_TICKS)
+    parser.add_argument("--device-name", default=DEVICE_NAME)
+    parser.add_argument("-v", "--verbose", action="store_true")
+
     args = parser.parse_args()
 
-    run_filter(args.burst_window, args.divisor, args.max_ticks, args.device_name, args.verbose)
+    if args.command == "install":
+        install_service()
+    elif args.command == "uninstall":
+        uninstall_service()
+    else:
+        run_filter(args.burst_window, args.divisor, args.max_ticks, args.device_name, args.verbose)
 
 
 if __name__ == "__main__":

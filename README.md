@@ -19,7 +19,7 @@ uv tool install k70-volume-filter
 Or from source:
 
 ```bash
-git clone https://github.com/YOUR_USER/k70-volume-filter.git
+git clone https://github.com/crdtk/k70-volume-filter.git
 cd k70-volume-filter
 uv tool install -e .
 ```
@@ -56,20 +56,22 @@ sudo k70-volume-filter -v
 
 ## Run as a systemd service
 
+Install the service and udev rules:
+
 ```bash
-make install-service
+sudo k70-volume-filter install
 ```
 
-To uninstall:
+Check status:
 
 ```bash
-make uninstall-service
+systemctl status k70-volume-filter
 ```
 
-## udev rules (optional, for non-root usage)
+Uninstall:
 
 ```bash
-make install-udev
+sudo k70-volume-filter uninstall
 ```
 
 ## License
